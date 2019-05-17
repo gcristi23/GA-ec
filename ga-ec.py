@@ -3,16 +3,18 @@ import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 
 class Node:
-    operations = ['+', '-', '*', '/', '**']
-    max_depth = 3
+    operations = ['+', '-', '*', '/', '**', 'np.log']
+    unary = ['np.log']
+    max_depth = 5
 
     def __init__(self, val=None, parent=None, left=None, right=None, level=0):
         self.level = level
         if val is None and parent is None and left is None and right is None:
-            self.gen_random(['vars[0]', 'vars[1]', 'vars[2]', 'vars[3]'])
+            self.gen_random(['vars[0]', 'vars[1]', 'vars[2]'])
         else:
             self.val = val
             if val not in Node.operations:
@@ -20,31 +22,46 @@ class Node:
             else:
                 self.leaf = False
             self.parent = parent
-            self.left = left
-            self.right = right
+            self.left = None
+            self.right = None
 
     def propagate(self):
         if self.leaf is True:
             return self.val
         else:
+            if self.val in Node.unary:
+                return "%s(%s)" % (self.val, self.left.propagate())
             return "(%s%s%s)" % (self.left.propagate(), self.val, self.right.propagate())
 
-    def get_random(self):
-        chance = np.random.rand()
-        if chance > 0.5:
-            if self.leaf is True:
-                return None
-            node = self.left.get_random()
-            if node is None:
-                node = self.right.get_random()
-                if node is None:
+    def get_random(self, level=None):
+        if level is None:
+            chance = np.random.rand()
+            if chance > 0.5:
+                if self.leaf is True:
                     return None
+                node = self.left.get_random()
+                if node is None:
+                    if self.val in Node.unary:
+                        return None
+                    else:
+                        node = self.right.get_random()
+                    if node is None:
+                        return None
+                    else:
+                        return node
                 else:
                     return node
             else:
-                return node
+                return self
         else:
-            return self
+            if self.level == level or self.leaf:
+                return self
+            else:
+                chance = np.random.rand()
+                if chance > 0.5 or self.val in Node.unary:
+                    return self.left.get_random(level)
+                else:
+                    return self.right.get_random(level)
 
     def get_parent(self):
         return self.parent
@@ -52,24 +69,34 @@ class Node:
     def set_parent(self, parent):
         self.parent = parent
 
-    def set_left_child(self, left):
-        self.left = left
+    def set_left_child(self, child):
+        self.left = child
 
-    def set_right_child(self, right):
-        self.right = right
+    def set_right_child(self, child):
+        if self.val not in Node.unary:
+            self.right = child
 
     def get_left_child(self):
         return self.left
 
     def get_right_child(self):
+        if self.val in Node.unary:
+            return self.left
         return self.right
 
     def is_leaf(self):
         return self.leaf
 
+    def set_level(self, level):
+        self.level = level
+        if not self.leaf:
+            self.left.set_level(level + 1)
+            if self.val not in Node.unary:
+                self.right.set_level(level + 1)
+
     def gen_random(self, variables):
         is_leaf = np.random.rand()
-        if is_leaf > 0.4 or self.level == Node.max_depth:
+        if is_leaf > 1 - 0.1 * self.level or self.level == Node.max_depth:
             self.leaf = True
             is_variable = np.random.rand()
             if is_variable > 0.5:
@@ -79,10 +106,25 @@ class Node:
         else:
             self.val = np.random.choice(Node.operations)
             self.leaf = False
-            self.right = Node(level=self.level + 1)
+            if self.val not in Node.unary:
+                self.right = Node(level=self.level + 1)
+                self.right.set_parent(self)
+            else:
+                self.right = None
             self.left = Node(level=self.level + 1)
-            self.right.set_parent(self)
+
             self.left.set_parent(self)
+
+    def get_height(self, level=0):
+        level += 1
+        if self.leaf:
+            return level
+        a = self.left.get_height(level)
+        if self.right is not None:
+            b = self.right.get_height(level)
+        else:
+            b = -1
+        return a if a > b else b
 
 
 size = 1000
@@ -111,12 +153,13 @@ def crossover(parents):
     # print("Before:")
     # print(parents[0].propagate())
     # print(parents[1].propagate())
+    level = np.random.randint(0, Node.max_depth)
+    swap_nodes = [parent.get_random(level=level) for parent in parents]
 
-    swap_nodes = [parent.get_random() for parent in parents]
     while swap_nodes[0] is None:
-        swap_nodes[0] = parents[0].get_random()
+        swap_nodes[0] = parents[0].get_random(level=level)
     while swap_nodes[1] is None:
-        swap_nodes[1] = parents[1].get_random()
+        swap_nodes[1] = parents[1].get_random(level=level)
     child = np.random.rand()
     if not swap_nodes[0].is_leaf():
 
@@ -124,13 +167,17 @@ def crossover(parents):
             aux = swap_nodes[0].get_left_child()
             if not swap_nodes[1].is_leaf():
                 swap_nodes[0].set_left_child(swap_nodes[1].get_left_child())
+                swap_nodes[0].get_left_child().set_level(swap_nodes[0].level + 1)
                 swap_nodes[1].set_left_child(aux)
+                swap_nodes[1].get_left_child().set_level(swap_nodes[1].level + 1)
                 return 1
         else:
             aux = swap_nodes[0].get_right_child()
             if not swap_nodes[1].is_leaf():
                 swap_nodes[0].set_right_child(swap_nodes[1].get_right_child())
                 swap_nodes[1].set_right_child(aux)
+                swap_nodes[0].get_right_child().set_level(swap_nodes[0].level + 1)
+                swap_nodes[1].get_right_child().set_level(swap_nodes[1].level + 1)
                 return 1
     return 0
     # print("After:")
@@ -150,29 +197,35 @@ def mutate(node):
 
 
 def algoritm_genetic_blanao(data, vars):
-    pop_size = 5000
-    max_error = 159000
+    pop_size = 100
+    max_error = 0.98
     n_parents = int(pop_size * 0.3)
-    scores = [99999999]
+    scores = [0]
     pop = initialize(pop_size, vars)
-    while min(scores) > max_error or np.isnan(min(scores)):
+    # for i in range(100):
+    #     print(pop[i].propagate())
+    # exit()
+    while max(scores) < max_error or np.isnan(min(scores)):
         scores = []
         for p in pop:
             try:
                 data_eval = eval(p.propagate())
-                score = np.sum((abs(data) - abs(data_eval)) ** 2)
+                data_eval = (data_eval - np.mean(data_eval)) / np.std(data_eval)
+                # score = np.sum((abs(data) - abs(data_eval)) ** 2)
+                score = np.corrcoef(data, data_eval)[0, 1]
                 if np.isnan(score):
-                    score = 9999999999.0
+                    score = 0.0
                 scores.append(score)
             except:
                 print("Can't")
-                scores.append(9999999999.0)
-
-        if min(scores) <= max_error:
+                scores.append(0.0)
+        print(max(scores))
+        if max(scores) >= max_error:
             break
-        ordered = sorted(zip(scores, pop), key=lambda x: x[0])[:n_parents]
+        ordered = sorted(zip(scores, pop), key=lambda x: x[0], reverse=True)[:n_parents]
         print(ordered[0][0])
         new_pop = [ordered[0][1]]
+        print(new_pop[0].get_height())
         for i in range(1, pop_size):
             parents = np.random.random_integers(0, n_parents - 1, 2)
             parents = [copy.deepcopy(ordered[x][1]) for x in parents]
@@ -182,28 +235,42 @@ def algoritm_genetic_blanao(data, vars):
                 mutate([parents[0]])
             if chance_mutation > 0.65:
                 mutate([parents[1]])
+            if parents[0].get_height() > Node.max_depth:
+                parents[0] = Node()
+
+            if parents[1].get_height() > Node.max_depth:
+                parents[1] = Node()
             new_pop.extend(parents)
         pop = new_pop
 
     plt.plot(data)
     print(pop[scores.index(min(scores))].propagate())
-    plt.plot(eval(pop[scores.index(min(scores))].propagate()))
+    plt.plot(eval(pop[scores.index(min(scores))].propagate()), color='r')
     plt.show()
     print(data)
     print(eval(pop[scores.index(min(scores))].propagate()))
+    return pop[scores.index(min(scores))].propagate()
 
 
 if __name__ == "__main__":
     data = pd.read_csv('data.csv')
+    X = data
+    y = data['C']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    ecuation = algoritm_genetic_blanao((X_train.C.values - np.mean(X_train.C.values)) / np.std(X_train.C.values),
+                                       [X_train.S.values / X_train.K.values, X_train.Tau_cal.values,
+                                        np.exp(1)])
     # algoritm_genetic_blanao(data.C.values[:93500], [data.S.values[:93500], data.K.values[:93500], data.R.values[:93500],
     #                                                np.exp(1)])
-    vars = [data.S.values[93500:], data.K.values[93500:], data.R.values[93500:], np.exp(1)]
-    res = eval(
-        "((((((((((((((((((((((((vars[1]/vars[0])/((((vars[0]/vars[1])+32.15060988297109)/13.811417830841105)/((((11.16352503810073/vars[1])+(4.536802971077117-0.6189935353746554))+vars[0])-vars[1])))+32.15060988297109)/13.811417830841105)-vars[2])-vars[2])-(vars[0]**((0.40300496752683923/24.527078532119337)-(20.904920847355058/vars[1]))))-((vars[1]+vars[1])**((0.533556692792978/vars[3])-(vars[1]+0.27594239833794676))))-(vars[0]**((0.40300496752683923/24.527078532119337)-(20.904920847355058/vars[1]))))-((vars[1]+vars[1])**((0.533556692792978/vars[3])-(vars[1]+0.27594239833794676))))-(vars[2]**34.10501879603735))-((5.4880150385650275-(2.4662211862675383**vars[3]))/((vars[0]+vars[1])*1.316012105775213)))-vars[2])-((5.4880150385650275-(2.4662211862675383**vars[3]))/((vars[0]+vars[1])*1.316012105775213)))-vars[2])-vars[2])-((vars[1]+vars[1])**((0.533556692792978/vars[3])-(vars[1]+0.27594239833794676))))-vars[2])-vars[2])-((1.7866782688039722+vars[2])/(vars[2]-(31.269626114424153/0.8930555937643061))))-vars[2])-((vars[1]+vars[1])**((0.533556692792978/vars[3])-(vars[1]+0.27594239833794676))))-(((7.8258837542966955+0.6195162032507688)*0.7001929432690519)/vars[0]))/(3.1153305930530175/((((28.841315686144544/vars[1])+(4.536802971077117-0.6189935353746554))+vars[0])-vars[1])))")
-    plt.plot(data.C.values[93500:])
-    error= np.sum(np.abs(data.C.values[93500:]-res)**2)
+    vars = [X_test.S.values, X_test.K.values, X_test.R.values, np.exp(1)]
+    res = eval(ecuation)
+    # plt.plot(X_test.BS_impl.values)
+    error = np.sum(np.abs(X_test.C.values - res) ** 2)
     print(error)
-    plt.plot(res)
+    error = np.sum(np.abs(X_test.C.values - X_test.BS_impl.values) ** 2)
+    print(error)
+    plt.plot(res, color='r')
+    plt.plot(X_test.C.values)
     plt.show()
 # In[ ]:
