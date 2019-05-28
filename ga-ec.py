@@ -2,13 +2,15 @@ import copy
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import norm
 
 
 class Node:
-    operations = ['+', '-', '*', '/', '**', 'np.log']
-    unary = ['np.log']
+    operations = ['+', '-', '*', '/', '**', 'np.log', 'np.maximum', 'np.minimum', 'norm.cdf', 'np.sin', 'np.cos']
+    unary = ['np.log', 'norm.cdf', 'np.sin', 'np.cos']
+    functions = ['np.maximum', 'np.minimum']
     vars = ['vars[0]', 'vars[1]']
-    max_depth = 3
+    max_depth = 2
 
     def __init__(self, val=None, parent=None, left=None, right=None, level=0):
         self.level = level
@@ -30,6 +32,8 @@ class Node:
         else:
             if self.val in Node.unary:
                 return "%s(%s)" % (self.val, self.left.propagate())
+            elif self.val in Node.functions:
+                return "%s(%s,%s)" % (self.val, self.left.propagate(), self.right.propagate())
             return "(%s%s%s)" % (self.left.propagate(), self.val, self.right.propagate())
 
     def get_random(self, level=None):
@@ -220,8 +224,8 @@ def mutate_value(node):
 
 
 def algoritm_genetic_blanao(data, vars):
-    pop_size = 1000
-    max_error = 0.08
+    pop_size = 20000
+    max_error = 50
     n_parents = int(pop_size * 0.3)
     scores = [10000000]
     pop = initialize(pop_size, vars)
@@ -247,15 +251,14 @@ def algoritm_genetic_blanao(data, vars):
         ordered = sorted(zip(scores, pop), key=lambda x: x[0])[:n_parents]
         print(ordered[0][0])
         new_pop = [ordered[0][1]]
-        print(new_pop[0].get_height())
+        print(new_pop[0].propagate())
         for i in range(1, pop_size):
             parents = np.random.random_integers(0, n_parents - 1, 2)
             parents = [copy.deepcopy(ordered[x][1]) for x in parents]
             crossover(parents)
             chance_mutation = np.random.rand()
             if chance_mutation < 0.1:
-                mutate_structure([parents[0]])
-                mutate_structure([parents[0]])
+                pass
             if chance_mutation > 0.9:
                 mutate_value([parents[0]])
                 mutate_value([parents[1]])
@@ -272,6 +275,7 @@ def algoritm_genetic_blanao(data, vars):
 
 
 if __name__ == "__main__":
+    print(norm.cdf(1))
     # data = pd.read_csv('data.csv')
     # X = data
     # y = data['C']
@@ -295,7 +299,7 @@ if __name__ == "__main__":
     #
     size = 1000
     time = np.arange(size) * 0.01
-    data = 1 / (1 + np.exp(-time))
+    data = 5.3*time**3
     ecuation = algoritm_genetic_blanao(data, [time, np.exp(1)])
     # print(ecuation)
 # In[ ]:
