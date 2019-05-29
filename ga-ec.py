@@ -2,15 +2,16 @@ import copy
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import norm
+import pandas as pd
+from sklearn.model_selection import train_test_split
 
 
 class Node:
     operations = ['+', '-', '*', '/', '**', 'np.log', 'np.maximum', 'np.minimum', 'norm.cdf', 'np.sin', 'np.cos']
     unary = ['np.log', 'norm.cdf', 'np.sin', 'np.cos']
     functions = ['np.maximum', 'np.minimum']
-    vars = ['vars[0]', 'vars[1]']
-    max_depth = 2
+    vars = ['vars[0]', 'vars[1]', 'vars[2]', 'vars[3]']
+    max_depth = 20
 
     def __init__(self, val=None, parent=None, left=None, right=None, level=0):
         self.level = level
@@ -39,21 +40,14 @@ class Node:
     def get_random(self, level=None):
         if level is None:
             chance = np.random.rand()
-            if chance > 0.5:
+            if chance > 0.3:
                 if self.leaf is True:
-                    return None
-                node = self.left.get_random()
-                if node is None:
-                    if self.val in Node.unary:
-                        return None
-                    else:
-                        node = self.right.get_random()
-                    if node is None:
-                        return None
-                    else:
-                        return node
+                    return self
+
+                if np.random.rand() > 0.5 or self.val in Node.unary:
+                    return self.left.get_random()
                 else:
-                    return node
+                    return self.right.get_random()
             else:
                 return self
         else:
@@ -75,6 +69,18 @@ class Node:
                 return self.left.get_random_leaf()
             else:
                 return self.right.get_random_leaf()
+
+    def get_random_node(self):
+        if self.is_leaf():
+            return None
+        if self.left.is_leaf():
+            return self
+        else:
+            chance = np.random.rand()
+            if chance > 0.5 or self.val in Node.unary:
+                return self.left.get_random_node()
+            else:
+                return self.right.get_random_node()
 
     def get_parent(self):
         return self.parent
@@ -112,7 +118,7 @@ class Node:
         if is_leaf > 1 - 0.1 * self.level or self.level == Node.max_depth:
             self.leaf = True
             is_variable = np.random.rand()
-            if is_variable > 0.5:
+            if is_variable > 0.3:
                 self.val = np.random.choice(variables)
             else:
                 self.val = str(np.random.normal(0, 1, 1)[0] * np.random.randint(1, 100))
@@ -143,7 +149,6 @@ class Node:
 def initialize(pop_size, vars):
     j = 0
     pop = []
-    print(vars)
     while j < pop_size:
         try:
             new_node = Node()
@@ -152,7 +157,7 @@ def initialize(pop_size, vars):
             eval(pop[-1].propagate())
             j += 1
         except Exception as e:
-            print("Error!")
+            pass
     return pop
 
 
@@ -190,14 +195,20 @@ def crossover(parents):
     # print("After:")
     # print(parents[0].propagate())
     # print(parents[1].propagate())
-    leafs = [p.get_random_leaf() for p in parents]
-    aux = leafs[0].val
-    leafs[0].val = leafs[1].val
-    leafs[1].val = aux
+    chance = np.random.rand()
+    if chance > 0:
+        values = [p.get_random_leaf() for p in parents]
+    else:
+        values = [p.get_random_node() for p in parents]
+        if values.count(None) > 0:
+            return
+    aux = values[0].val
+    values[0].val = values[1].val
+    values[1].val = aux
 
 
 def mutate_structure(node):
-    random_node = node[0].get_random()
+    random_node = node[0].get_random_node()
     while random_node is None:
         random_node = node[0].get_random()
     chance = np.random.rand()
@@ -208,24 +219,31 @@ def mutate_structure(node):
 
 
 def mutate_value(node):
-    a = node[0].get_random_leaf()
-    chance = np.random.rand()
-    if chance > 0.8:
-        is_variable = np.random.rand()
-        if is_variable > 0.5:
-            a.val = np.random.choice(Node.vars)
-        else:
-            a.val = str(np.random.normal(1, 1, 1)[0] * np.random.randint(1, 100))
-    elif a.val.replace('.', '', 1).isdigit():
-        a.val = str(eval(a.val) * np.random.normal(0, 1, 1)[0])
-        a.val = str(eval(a.val) * np.random.normal(0, 1, 1)[0])
+    if np.random.rand() > 0:
+        a = node[0].get_random_leaf()
     else:
-        a.val = np.random.choice(Node.vars)
+        a = node[0].get_random_node()
+        if a is None:
+            return
+    chance = np.random.rand()
+    if a.is_leaf():
+        if chance > 0.5:
+            is_variable = np.random.rand()
+            if is_variable > 0.3:
+                a.val = np.random.choice(Node.vars)
+            else:
+                a.val = str(np.random.normal(1, 1, 1)[0] * np.random.randint(1, 100))
+        elif a.val.replace('.', '', 1).isdigit():
+            a.val = str(eval(a.val) * np.random.normal(0, 1, 1)[0] * np.random.randint(1, 100))
+        else:
+            a.val = np.random.choice(Node.vars)
+    else:
+        a.val = np.random.choice(Node.operations)
 
 
 def algoritm_genetic_blanao(data, vars):
-    pop_size = 20000
-    max_error = 50
+    pop_size = 1000
+    max_error = 100000
     n_parents = int(pop_size * 0.3)
     scores = [10000000]
     pop = initialize(pop_size, vars)
@@ -257,9 +275,10 @@ def algoritm_genetic_blanao(data, vars):
             parents = [copy.deepcopy(ordered[x][1]) for x in parents]
             crossover(parents)
             chance_mutation = np.random.rand()
-            if chance_mutation < 0.1:
-                pass
-            if chance_mutation > 0.9:
+            if chance_mutation < 0.2:
+                mutate_structure([parents[0]])
+                mutate_structure([parents[1]])
+            if chance_mutation > 0.8:
                 mutate_value([parents[0]])
                 mutate_value([parents[1]])
             new_pop.extend(parents)
@@ -275,31 +294,30 @@ def algoritm_genetic_blanao(data, vars):
 
 
 if __name__ == "__main__":
-    print(norm.cdf(1))
-    # data = pd.read_csv('data.csv')
-    # X = data
-    # y = data['C']
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    data = pd.read_csv('data.csv')
+    X = data
+    y = data['C']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # - np.mean(X_train.C.values)) / np.std(X_train.C.values)
+    ecuation = algoritm_genetic_blanao(X_train.C.values,
+                                       [X_train.S.values, X_train.K.values, X_train.Tau_cal.values,
+                                        np.exp(1)])
+    # algoritm_genetic_blanao(data.C.values[:93500], [data.S.values[:93500], data.K.values[:93500], data.R.values[:93500],
+    #                                                np.exp(1)])
+    vars = [X_test.S.values, X_test.K.values, X_test.R.values, np.exp(1)]
+    res = eval(ecuation)
+    # plt.plot(X_test.BS_impl.values)
+    error = np.sum(np.abs(X_test.C.values - res) ** 2)
+    print(error)
+    error = np.sum(np.abs(X_test.C.values - X_test.BS_impl.values) ** 2)
+    print(error)
+    plt.plot(res, color='r')
+    plt.plot(X_test.C.values)
+    plt.show()
     #
-    # ecuation = algoritm_genetic_blanao((X_train.C.values - np.mean(X_train.C.values)) / np.std(X_train.C.values),
-    #                                    [X_train.S.values / X_train.K.values, X_train.Tau_cal.values,
-    #                                     np.exp(1)])
-    # # algoritm_genetic_blanao(data.C.values[:93500], [data.S.values[:93500], data.K.values[:93500], data.R.values[:93500],
-    # #                                                np.exp(1)])
-    # vars = [X_test.S.values, X_test.K.values, X_test.R.values, np.exp(1)]
-    # res = eval(ecuation)
-    # # plt.plot(X_test.BS_impl.values)
-    # error = np.sum(np.abs(X_test.C.values - res) ** 2)
-    # print(error)
-    # error = np.sum(np.abs(X_test.C.values - X_test.BS_impl.values) ** 2)
-    # print(error)
-    # plt.plot(res, color='r')
-    # plt.plot(X_test.C.values)
-    # plt.show()
-    #
-    size = 1000
-    time = np.arange(size) * 0.01
-    data = 5.3*time**3
-    ecuation = algoritm_genetic_blanao(data, [time, np.exp(1)])
+    # size = 1000
+    # time = np.arange(size) * 0.01
+    # data = 5.3*time**3
+    # ecuation = algoritm_genetic_blanao(data, [time, np.exp(1)])
     # print(ecuation)
 # In[ ]:
