@@ -10,8 +10,8 @@ class Node:
     operations = ['+', '-', '*', '/', '**', 'np.log', 'np.maximum', 'np.minimum', 'norm.cdf', 'np.sin', 'np.cos']
     unary = ['np.log', 'norm.cdf', 'np.sin', 'np.cos']
     functions = ['np.maximum', 'np.minimum']
-    vars = ['vars[0]', 'vars[1]', 'vars[2]', 'vars[3]']
-    max_depth = 20
+    vars = ['vars[0]', 'vars[1]', 'vars[2]']
+    max_depth = 7
 
     def __init__(self, val=None, parent=None, left=None, right=None, level=0):
         self.level = level
@@ -242,9 +242,9 @@ def mutate_value(node):
 
 
 def algoritm_genetic_blanao(data, vars):
-    pop_size = 1000
+    pop_size = 2000
     max_error = 100000
-    n_parents = int(pop_size * 0.3)
+    n_parents = int(pop_size * 0.4)
     scores = [10000000]
     pop = initialize(pop_size, vars)
     # for i in range(100):
@@ -300,11 +300,10 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     # - np.mean(X_train.C.values)) / np.std(X_train.C.values)
     ecuation = algoritm_genetic_blanao(X_train.C.values,
-                                       [X_train.S.values, X_train.K.values, X_train.Tau_cal.values,
-                                        np.exp(1)])
+                                       [X_train.S.values, X_train.K.values, X_train.Tau_cal.values])
     # algoritm_genetic_blanao(data.C.values[:93500], [data.S.values[:93500], data.K.values[:93500], data.R.values[:93500],
     #                                                np.exp(1)])
-    vars = [X_test.S.values, X_test.K.values, X_test.R.values, np.exp(1)]
+    vars = [X_test.S.values, X_test.K.values, X_test.R.values]
     res = eval(ecuation)
     # plt.plot(X_test.BS_impl.values)
     error = np.sum(np.abs(X_test.C.values - res) ** 2)
